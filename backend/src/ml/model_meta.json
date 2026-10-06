@@ -1,0 +1,31 @@
+{
+  "model_version": "rf-1.0.0",
+  "algorithm": "RandomForestRegressor",
+  "trained_at": "2026-10-06T07:21:23.149296Z",
+  "synthetic": true,
+  "metrics": {
+    "mae": 195676.33,
+    "r2_score": 0.8382
+  },
+  "features": [
+    "disaster_type_idx",
+    "severity",
+    "affected_population",
+    "duration_days",
+    "medical_urgency",
+    "accessibility"
+  ],
+  "targets": [
+    "water_demand",
+    "food_demand",
+    "medicine_demand",
+    "shelter_demand"
+  ],
+  "disaster_types": [
+    "flood",
+    "earthquake",
+    "cyclone",
+    "drought",
+    "landslide"
+  ]
+}

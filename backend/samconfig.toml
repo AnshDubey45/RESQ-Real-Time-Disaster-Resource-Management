@@ -1,0 +1,21 @@
+version = 0.1
+
+[default]
+[default.global]
+[default.global.parameters]
+stack_name = "resq-cloud-backend"
+
+[default.build]
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.deploy]
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+s3_prefix = "resq-cloud-backend"
+region = "ap-south-1"
+disable_rollback = false
+image_repositories = []

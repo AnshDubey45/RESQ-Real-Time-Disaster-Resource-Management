@@ -1,0 +1,29 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      - echo "Installing RESQ-CLOUD Backend Dependencies..."
+      - pip install --upgrade pip
+      - pip install -r requirements.txt
+
+  pre_build:
+    commands:
+      - echo "Running Verification Unit Tests & Calculations..."
+      - python -m pytest -v
+
+  build:
+    commands:
+      - echo "Building AWS SAM Serverless Deployment Artifacts..."
+      - sam build --template template.yaml
+
+  post_build:
+    commands:
+      - echo "SAM Build successfully completed at $(date)"
+
+artifacts:
+  files:
+    - .aws-sam/**/*
+    - template.yaml

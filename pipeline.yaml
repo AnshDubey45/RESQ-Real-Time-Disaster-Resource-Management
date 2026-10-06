@@ -1,0 +1,129 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CI/CD Pipeline for RESQ-CLOUD Backend using AWS CodePipeline and CodeBuild
+
+Parameters:
+  GitHubOwner:
+    Type: String
+    Description: GitHub Repository Owner (e.g., AnshDubey45)
+    Default: AnshDubey45
+  GitHubRepo:
+    Type: String
+    Description: GitHub Repository Name (e.g., RESQ-Real-Time-Disaster-Resource-Management)
+    Default: RESQ-Real-Time-Disaster-Resource-Management
+  GitHubBranch:
+    Type: String
+    Description: GitHub Branch to monitor
+    Default: main
+  GitHubConnectionArn:
+    Type: String
+    Description: >-
+      ARN of the AWS CodeStar Connection to GitHub. You must create this in the AWS Console first: 
+      Developer Tools > Settings > Connections > Create connection.
+
+Resources:
+  PipelineArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess # For SAM deployment; restrict in production
+
+  PipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodePipelinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                  - codestar-connections:UseConnection
+                Resource: "*"
+
+  BackendBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: RESQ-Cloud-Backend-Build
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                python: 3.11
+            build:
+              commands:
+                - cd backend
+                - sam build --use-container
+                - sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name resq-cloud-backend --resolve-s3 --capabilities CAPABILITY_IAM
+
+  BackendPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: RESQ-Cloud-Pipeline
+      RoleArn: !GetAtt PipelineServiceRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref PipelineArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: '1'
+              OutputArtifacts:
+                - Name: SourceArtifact
+              Configuration:
+                ConnectionArn: !Ref GitHubConnectionArn
+                FullRepositoryId: !Sub "${GitHubOwner}/${GitHubRepo}"
+                BranchName: !Ref GitHubBranch
+        - Name: BuildAndDeploy
+          Actions:
+            - Name: BuildAndDeploy
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              InputArtifacts:
+                - Name: SourceArtifact
+              Configuration:
+                ProjectName: !Ref BackendBuildProject
+
+Outputs:
+  PipelineUrl:
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/codesuite/codepipeline/pipelines/${BackendPipeline}/view"

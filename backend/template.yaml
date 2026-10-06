@@ -1,0 +1,232 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  RESQ-CLOUD Backend
+  Serverless Disaster Resource Intelligence and Allocation Command Engine
+
+Globals:
+  Function:
+    Runtime: python3.14
+    Timeout: 15
+    MemorySize: 512
+    Environment:
+      Variables:
+        DISASTERS_TABLE: !Ref DisastersTable
+        AREAS_TABLE: !Ref AreasTable
+        WAREHOUSES_TABLE: !Ref WarehousesTable
+        REQUESTS_TABLE: !Ref RequestsTable
+        ALLOCATIONS_TABLE: !Ref AllocationsTable
+        AUDIT_TABLE: !Ref AuditLogsTable
+        TIMELINE_TABLE: !Ref TimelineTable
+        SIMULATIONS_TABLE: !Ref SimulationsTable
+        MODEL_S3_BUCKET: !Ref ModelBucket
+
+Resources:
+  # ========================================================
+  # 1. API GATEWAY HTTP API (v2) WITH FULL CORS
+  # ========================================================
+  ResqHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - "http://localhost:5173"
+          - "http://localhost:3000"
+          - "*"
+        AllowMethods:
+          - GET
+          - POST
+          - PATCH
+          - PUT
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Amz-Date
+          - X-Api-Key
+
+  # ========================================================
+  # 2. S3 BUCKET FOR ML ARTIFACTS
+  # ========================================================
+  ModelBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "resq-models-${AWS::AccountId}-${AWS::Region}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # ========================================================
+  # 3. DYNAMODB TABLES (100% FREE-TIER ON-DEMAND CAPACITY)
+  # ========================================================
+  DisastersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: resq-disasters
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  AreasTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: resq-areas
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: disasterId
+          AttributeType: S
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: disasterId
+          KeyType: HASH
+        - AttributeName: id
+          KeyType: RANGE
+
+  WarehousesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: resq-warehouses
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  RequestsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: resq-requests
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  AllocationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: resq-allocations
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  AuditLogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: resq-audit-logs
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  TimelineTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: resq-timeline
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: disasterId
+          AttributeType: S
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: disasterId
+          KeyType: HASH
+        - AttributeName: id
+          KeyType: RANGE
+
+  SimulationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: resq-simulations
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  # ========================================================
+  # 4. LAMBDA FUNCTIONS
+  # ========================================================
+  
+  # A. Master Router Lambda (Serving all REST endpoints)
+  ResqApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: src.handlers.router.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DisastersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AreasTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WarehousesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RequestsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AllocationsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AuditLogsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TimelineTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SimulationsTable
+        - S3ReadPolicy:
+            BucketName: !Ref ModelBucket
+      Events:
+        ProxyRoot:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ResqHttpApi
+            Path: /{proxy+}
+            Method: ANY
+        Root:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ResqHttpApi
+            Path: /
+            Method: GET
+
+  # B. Dedicated Standalone Health Function
+  HealthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: src.handlers.health.handler
+      Events:
+        Health:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ResqHttpApi
+            Path: /health
+            Method: GET
+
+Outputs:
+  HttpApiUrl:
+    Description: "Base URL for RESQ-CLOUD API Gateway endpoint"
+    Value: !Sub "https://${ResqHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  ModelBucketName:
+    Description: "S3 Bucket Name for Machine Learning Model artifacts"
+    Value: !Ref ModelBucket
