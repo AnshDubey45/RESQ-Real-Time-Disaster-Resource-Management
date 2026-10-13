@@ -171,14 +171,6 @@ export function NotificationDropdown() {
         className="relative p-2 text-[#94A3B8] hover:text-white hover:bg-slate-800 rounded-full transition-colors cursor-pointer group focus:outline-none focus:ring-2 focus:ring-[#38BDF8]"
       >
         <Bell className="w-5 h-5 transition-transform duration-200 group-hover:scale-105" />
-        {unreadCount > 0 && (
-          <>
-            <span className="absolute top-1 right-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-lg ring-2 ring-[#1E293B]">
-              {unreadCount}
-            </span>
-            <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-rose-400 animate-ping opacity-40 pointer-events-none" />
-          </>
-        )}
       </button>
 
       {/* Floating Dropdown Panel */}
