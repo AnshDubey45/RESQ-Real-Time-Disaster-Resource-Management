@@ -112,6 +112,7 @@ export interface Allocation {
   createdAt: string;
   approvedBy?: string;
   approvedAt?: string;
+  rejectionReason?: string;
   explanation: string;
 }
 

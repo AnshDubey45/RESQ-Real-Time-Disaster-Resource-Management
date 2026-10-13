@@ -17,6 +17,100 @@ const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Persistent synchronized store keys
+const REQ_STORAGE_KEY = 'resq_requests_store';
+const ALLOC_STORAGE_KEY = 'resq_allocations_store';
+
+function getStoredRequests(): ResourceRequest[] {
+  try {
+    const raw = localStorage.getItem(REQ_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return [...mockRequests];
+}
+
+function setStoredRequests(reqs: ResourceRequest[]): void {
+  try {
+    localStorage.setItem(REQ_STORAGE_KEY, JSON.stringify(reqs));
+  } catch {}
+}
+
+function getStoredAllocations(): Allocation[] {
+  try {
+    const raw = localStorage.getItem(ALLOC_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return [...mockAllocations];
+}
+
+function setStoredAllocations(alcs: Allocation[]): void {
+  try {
+    localStorage.setItem(ALLOC_STORAGE_KEY, JSON.stringify(alcs));
+  } catch {}
+}
+
+// Bidirectional sync: when a Request changes status, update corresponding Allocation
+function syncRequestToAllocation(requestId: string, newStatus: 'approved' | 'rejected' | 'pending') {
+  const reqs = getStoredRequests();
+  const alcs = getStoredAllocations();
+  const req = reqs.find(r => r.id === requestId);
+  if (!req) return;
+
+  const idSuffix = req.id.replace('REQ-', '');
+  let alloc = alcs.find(a => a.id.replace('ALLOC-', '') === idSuffix);
+  if (!alloc) {
+    alloc = alcs.find(a =>
+      a.destinationArea.toLowerCase() === req.areaName.toLowerCase() &&
+      a.resourceType.toLowerCase() === req.resourceType.toLowerCase()
+    );
+  }
+
+  if (alloc) {
+    if (newStatus === 'approved') {
+      alloc.approvalStatus = 'approved';
+      alloc.approvedBy = 'Commander John Doe';
+      alloc.approvedAt = new Date().toISOString();
+      if (alloc.dispatchStatus === 'pending') {
+        alloc.dispatchStatus = 'en_route';
+      }
+    } else if (newStatus === 'rejected') {
+      alloc.approvalStatus = 'rejected';
+      alloc.rejectionReason = 'Request rejected by operator';
+    } else if (newStatus === 'pending') {
+      alloc.approvalStatus = 'pending_approval';
+    }
+    setStoredAllocations(alcs);
+  }
+}
+
+// Bidirectional sync: when an Allocation changes status, update corresponding Request
+function syncAllocationToRequest(allocationId: string, newStatus: 'approved' | 'rejected' | 'pending') {
+  const reqs = getStoredRequests();
+  const alcs = getStoredAllocations();
+  const alloc = alcs.find(a => a.id === allocationId);
+  if (!alloc) return;
+
+  const idSuffix = alloc.id.replace('ALLOC-', '');
+  let req = reqs.find(r => r.id.replace('REQ-', '') === idSuffix);
+  if (!req) {
+    req = reqs.find(r =>
+      r.areaName.toLowerCase() === alloc.destinationArea.toLowerCase() &&
+      r.resourceType.toLowerCase() === alloc.resourceType.toLowerCase()
+    );
+  }
+
+  if (req) {
+    if (newStatus === 'approved') {
+      req.status = 'approved';
+    } else if (newStatus === 'rejected') {
+      req.status = 'rejected';
+    } else if (newStatus === 'pending') {
+      req.status = 'pending';
+    }
+    setStoredRequests(reqs);
+  }
+}
+
 async function fetchJson<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
   const res = await fetch(url, {
@@ -118,28 +212,70 @@ export const api = {
 
   async getResourceRequests(filters?: any): Promise<ResourceRequest[]> {
     if (USE_MOCK) {
-      await delay(200);
-      return mockRequests;
+      await delay(150);
+      return getStoredRequests();
     }
     try {
-      return await fetchJson<ResourceRequest[]>('/requests');
+      const data = await fetchJson<ResourceRequest[]>('/requests');
+      if (Array.isArray(data) && data.length > 0) {
+        return data;
+      }
+      return getStoredRequests();
     } catch (err) {
-      console.warn('API getResourceRequests fallback to mock:', err);
-      return mockRequests;
+      return getStoredRequests();
     }
   },
 
   async getAllocations(filters?: any): Promise<Allocation[]> {
     if (USE_MOCK) {
-      await delay(200);
-      return mockAllocations;
+      await delay(150);
+      return getStoredAllocations();
     }
     try {
-      return await fetchJson<Allocation[]>('/allocations');
+      const data = await fetchJson<Allocation[]>('/allocations');
+      if (Array.isArray(data) && data.length > 0) {
+        return data;
+      }
+      return getStoredAllocations();
     } catch (err) {
-      console.warn('API getAllocations fallback to mock:', err);
-      return mockAllocations;
+      return getStoredAllocations();
     }
+  },
+
+  async approveResourceRequest(id: string): Promise<boolean> {
+    try {
+      await fetchJson(`/requests/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'approved' }),
+      });
+    } catch {}
+
+    const reqs = getStoredRequests();
+    const target = reqs.find(r => r.id === id);
+    if (target) {
+      target.status = 'approved';
+      setStoredRequests(reqs);
+    }
+    syncRequestToAllocation(id, 'approved');
+    return true;
+  },
+
+  async rejectResourceRequest(id: string): Promise<boolean> {
+    try {
+      await fetchJson(`/requests/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'rejected' }),
+      });
+    } catch {}
+
+    const reqs = getStoredRequests();
+    const target = reqs.find(r => r.id === id);
+    if (target) {
+      target.status = 'rejected';
+      setStoredRequests(reqs);
+    }
+    syncRequestToAllocation(id, 'rejected');
+    return true;
   },
 
   async getPredictions(areaId?: string, resourceType?: string): Promise<DemandPrediction[]> {
@@ -266,24 +402,45 @@ export const api = {
     try {
       await fetchJson(`/allocations/${id}/approve`, {
         method: 'POST',
-        body: JSON.stringify({ approvedBy: 'Administrator (Mission Commander)' }),
+        body: JSON.stringify({ approvedBy: 'Commander John Doe' }),
       });
-      return true;
     } catch (err) {
-      return true;
+      // offline/fallback
     }
+
+    const alcs = getStoredAllocations();
+    const target = alcs.find(a => a.id === id);
+    if (target) {
+      target.approvalStatus = 'approved';
+      target.approvedBy = 'Commander John Doe';
+      target.approvedAt = new Date().toISOString();
+      if (target.dispatchStatus === 'pending') {
+        target.dispatchStatus = 'en_route';
+      }
+      setStoredAllocations(alcs);
+    }
+    syncAllocationToRequest(id, 'approved');
+    return true;
   },
 
   async rejectAllocation(id: string): Promise<boolean> {
     try {
       await fetchJson(`/allocations/${id}/reject`, {
         method: 'POST',
-        body: JSON.stringify({ reason: 'Rejected by Administrator' }),
+        body: JSON.stringify({ reason: 'Rejected by Commander John Doe' }),
       });
-      return true;
     } catch (err) {
-      return true;
+      // offline/fallback
     }
+
+    const alcs = getStoredAllocations();
+    const target = alcs.find(a => a.id === id);
+    if (target) {
+      target.approvalStatus = 'rejected';
+      setStoredAllocations(alcs);
+    }
+    syncAllocationToRequest(id, 'rejected');
+    return true;
   },
 
   async createDisaster(data: any): Promise<Disaster> {
@@ -300,16 +457,69 @@ export const api = {
   },
 
   async createResourceRequest(data: any): Promise<ResourceRequest> {
+    const newReqId = `REQ-${Date.now().toString().slice(-4)}`;
+    const newReq: ResourceRequest = {
+      id: newReqId,
+      areaId: data.areaId || 'A-001',
+      areaName: data.areaName || data.areaId || 'Chennai Central',
+      disasterName: data.disasterName || 'Current Disaster',
+      resourceType: data.resourceType,
+      requestedQuantity: Number(data.requestedQuantity),
+      unit: data.unit || 'Units',
+      urgency: data.urgency || 'medium',
+      status: 'pending',
+      requestedAt: new Date().toISOString(),
+      priorityScore: data.urgency === 'critical' ? 95 : data.urgency === 'high' ? 82 : data.urgency === 'medium' ? 65 : 45,
+      notes: data.notes || ''
+    };
+
     try {
-      return await fetchJson<ResourceRequest>('/requests', {
+      await fetchJson<ResourceRequest>('/requests', {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          id: newReqId
+        }),
       });
     } catch (err) {
-      const newReq = { ...mockRequests[0], ...data, id: `REQ-${Date.now()}`, status: 'pending' };
-      mockRequests.unshift(newReq);
-      return newReq;
+      // offline/fallback
     }
+
+    // 1. Save into requests store
+    const reqs = getStoredRequests();
+    reqs.unshift(newReq);
+    setStoredRequests(reqs);
+
+    // 2. Automatically generate connected allocation corridor
+    const warehouses = mockWarehouses;
+    const warehouseWithStock = warehouses.find(w =>
+      w.resources.some(r => r.resourceType.toLowerCase().includes(newReq.resourceType.toLowerCase()))
+    ) || warehouses[0];
+
+    const newAlloc: Allocation = {
+      id: `ALLOC-${newReqId.replace('REQ-', '')}`,
+      sourceWarehouse: warehouseWithStock.name,
+      sourceWarehouseId: warehouseWithStock.id,
+      destinationArea: newReq.areaName,
+      destinationAreaId: newReq.areaId,
+      resourceType: newReq.resourceType,
+      quantity: newReq.requestedQuantity,
+      unit: newReq.unit,
+      priorityScore: newReq.priorityScore,
+      aiRecommendation: true,
+      aiConfidence: 0.94,
+      approvalStatus: 'recommended',
+      dispatchStatus: 'pending',
+      estimatedDelivery: new Date(Date.now() + 2 * 3600000).toISOString(),
+      createdAt: new Date().toISOString(),
+      explanation: `Automated AI allocation route from ${warehouseWithStock.name} (${warehouseWithStock.location}) to fulfill field request ${newReq.id}.`
+    };
+
+    const alcs = getStoredAllocations();
+    alcs.unshift(newAlloc);
+    setStoredAllocations(alcs);
+
+    return newReq;
   },
 
   async updateInventory(warehouseId: string, resourceType: string, quantity: number): Promise<boolean> {

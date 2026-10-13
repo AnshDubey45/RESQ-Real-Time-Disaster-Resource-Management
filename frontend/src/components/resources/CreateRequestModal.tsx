@@ -11,32 +11,59 @@ interface CreateRequestModalProps {
 
 export const CreateRequestModal: React.FC<CreateRequestModalProps> = ({ onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
-    areaId: '',
-    resourceType: '',
-    quantity: '',
-    urgency: 'medium',
+    areaId: 'A-001',
+    areaName: 'Chennai Central',
+    disasterName: 'Chennai Basin Floods',
+    resourceType: 'Water',
+    quantity: '10000',
+    urgency: 'high',
     notes: ''
   });
 
-  const [resourceTypes, setResourceTypes] = useState<any[]>([]);
+  const [resourceTypes, setResourceTypes] = useState<any[]>(['Water', 'Food Packets', 'Medicine', 'Shelter Kits', 'Rescue Equipment']);
+  const [areas, setAreas] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    // Mock fetching resource types since we don't have a direct API for it, or use api if it exists
-    const fetchTypes = async () => {
+    const fetchFormData = async () => {
       try {
-        if(api.getResourceTypes) {
-          const types = await api.getResourceTypes();
-          setResourceTypes(types);
-        } else {
-          setResourceTypes(['Water (Bottles)', 'MRE (Meals)', 'Medical Kits', 'Blankets', 'Tents']);
+        const [types, areaList] = await Promise.all([
+          api.getResourceTypes(),
+          api.getAffectedAreas()
+        ]);
+        if (types && types.length > 0) setResourceTypes(types);
+        if (areaList && areaList.length > 0) {
+          setAreas(areaList);
+          setFormData(prev => ({
+            ...prev,
+            areaId: areaList[0].id,
+            areaName: areaList[0].name,
+            disasterName: areaList[0].disasterName
+          }));
         }
       } catch (error) {
-        setResourceTypes(['Water (Bottles)', 'MRE (Meals)', 'Medical Kits', 'Blankets', 'Tents']);
+        console.warn('Failed to fetch modal dependencies', error);
       }
     };
-    fetchTypes();
+    fetchFormData();
   }, []);
+
+  const handleAreaChange = (selectedId: string) => {
+    const matched = areas.find(a => a.id === selectedId);
+    setFormData(prev => ({
+      ...prev,
+      areaId: selectedId,
+      areaName: matched ? matched.name : selectedId,
+      disasterName: matched ? matched.disasterName : 'Active Disaster'
+    }));
+  };
+
+  const getUnitForResource = (type: string) => {
+    if (type.includes('Water')) return 'Liters';
+    if (type.includes('Medicine')) return 'Kits';
+    if (type.includes('Rescue')) return 'Sets';
+    return 'Units';
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,19 +74,17 @@ export const CreateRequestModal: React.FC<CreateRequestModalProps> = ({ onClose,
     
     setIsSubmitting(true);
     try {
-      if(api.createResourceRequest) {
-        await api.createResourceRequest({
-          areaId: formData.areaId,
-          areaName: formData.areaId, // Mocking area name
-          disasterName: 'Current Disaster',
-          resourceType: formData.resourceType,
-          requestedQuantity: parseInt(formData.quantity, 10),
-          unit: 'Units',
-          urgency: formData.urgency as any,
-          notes: formData.notes
-        });
-      }
-      toast.success('Resource request created successfully');
+      await api.createResourceRequest({
+        areaId: formData.areaId,
+        areaName: formData.areaName,
+        disasterName: formData.disasterName,
+        resourceType: formData.resourceType,
+        requestedQuantity: parseInt(formData.quantity, 10),
+        unit: getUnitForResource(formData.resourceType),
+        urgency: formData.urgency as any,
+        notes: formData.notes
+      });
+      toast.success('Resource request & allocation route created successfully');
       onSuccess();
     } catch (error) {
       console.error(error);
@@ -87,15 +112,28 @@ export const CreateRequestModal: React.FC<CreateRequestModalProps> = ({ onClose,
           
           <form onSubmit={handleSubmit} className="p-5 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-[#94A3B8] mb-1.5">Area</label>
-              <input
-                type="text"
-                value={formData.areaId}
-                onChange={e => setFormData({ ...formData, areaId: e.target.value })}
-                placeholder="e.g., Downtown Sector 4"
-                className="w-full bg-[#0B0F19] border border-[rgba(148,163,184,0.12)] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#38BDF8]"
-                required
-              />
+              <label className="block text-sm font-medium text-[#94A3B8] mb-1.5">Affected Disaster Sector</label>
+              {areas.length > 0 ? (
+                <select
+                  value={formData.areaId}
+                  onChange={e => handleAreaChange(e.target.value)}
+                  className="w-full bg-[#0B0F19] border border-[rgba(148,163,184,0.12)] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#38BDF8]"
+                  required
+                >
+                  {areas.map(a => (
+                    <option key={a.id} value={a.id}>{a.name} ({a.disasterName})</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={formData.areaName}
+                  onChange={e => setFormData({ ...formData, areaId: e.target.value, areaName: e.target.value })}
+                  placeholder="e.g., Chennai Central"
+                  className="w-full bg-[#0B0F19] border border-[rgba(148,163,184,0.12)] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#38BDF8]"
+                  required
+                />
+              )}
             </div>
             
             <div>
@@ -106,7 +144,6 @@ export const CreateRequestModal: React.FC<CreateRequestModalProps> = ({ onClose,
                 className="w-full bg-[#0B0F19] border border-[rgba(148,163,184,0.12)] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#38BDF8]"
                 required
               >
-                <option value="">Select a resource...</option>
                 {resourceTypes.map(t => {
                   const val = typeof t === 'string' ? t : t.name;
                   return <option key={val} value={val}>{val}</option>;

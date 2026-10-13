@@ -29,18 +29,28 @@ export default function ResourceRequests() {
     fetchRequests();
   }, []);
 
-  const handleApprove = (id: string) => {
-    setRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: 'approved' as any } : r))
-    );
-    toast.success('Request approved');
+  const handleApprove = async (id: string) => {
+    try {
+      await api.approveResourceRequest(id);
+      setRequests((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, status: 'approved' as any } : r))
+      );
+      toast.success('Request approved — allocation authorized');
+    } catch {
+      toast.error('Failed to approve request');
+    }
   };
 
-  const handleReject = (id: string) => {
-    setRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: 'REJECTED' as any } : r))
-    );
-    toast.error('Request rejected');
+  const handleReject = async (id: string) => {
+    try {
+      await api.rejectResourceRequest(id);
+      setRequests((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, status: 'rejected' as any } : r))
+      );
+      toast.error('Request rejected — allocation cancelled');
+    } catch {
+      toast.error('Failed to reject request');
+    }
   };
 
   const filteredRequests = useMemo(() => {
