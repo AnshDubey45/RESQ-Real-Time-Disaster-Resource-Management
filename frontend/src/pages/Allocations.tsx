@@ -2,7 +2,7 @@ import React from 'react';
 import { api } from '@/services/api';
 import type { Allocation, Warehouse } from '@/types';
 import { AllocationSankey } from '@/components/intelligence/AllocationSankey';
-import { BadgeCheck, Clock, Truck, CheckCircle2, AlertCircle } from 'lucide-react';
+import { BadgeCheck, Clock, Truck, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/utils';
 import { toast } from 'sonner';
 
@@ -68,28 +68,6 @@ export default function Allocations() {
       </div>
 
       <AllocationSankey allocations={allocations} warehouses={warehouses} />
-
-      {/* Human-in-the-loop visual */}
-      <div className="bg-[#1E293B] border border-[rgba(148,163,184,0.12)] rounded-xl p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-[#E2E8F0]">Approval Pipeline</h2>
-          <div className="flex items-center space-x-2 text-sm text-[#38BDF8]">
-            <AlertCircle className="w-4 h-4" />
-            <span>Human-in-the-loop enabled</span>
-          </div>
-        </div>
-        <div className="flex items-center justify-between relative px-8">
-          <div className="absolute top-1/2 left-8 right-8 h-px bg-[rgba(148,163,184,0.12)] -z-10 -translate-y-1/2"></div>
-          {['AI RECOMMENDS', 'HUMAN APPROVES', 'DISPATCH', 'COMPLETE'].map((step, i) => (
-            <div key={step} className="flex flex-col items-center gap-2 bg-[#1E293B] px-4">
-              <div className="w-8 h-8 rounded-full bg-[#1E293B] border border-[#38BDF8] flex items-center justify-center text-[#38BDF8] font-bold text-sm shadow-[0_0_10px_rgba(56,189,248,0.2)]">
-                {i + 1}
-              </div>
-              <span className="text-xs font-semibold text-[#94A3B8] tracking-wider">{step}</span>
-            </div>
-          ))}
-        </div>
-      </div>
 
       <div className="bg-[#1E293B] border border-[rgba(148,163,184,0.12)] rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
