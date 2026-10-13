@@ -1,6 +1,7 @@
 import React from 'react';
-import { Menu, Bell } from 'lucide-react';
+import { Menu } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import { NotificationDropdown } from './NotificationDropdown';
 
 interface TopbarProps {
   toggleMobile: () => void;
@@ -59,10 +60,7 @@ export default function Topbar({ toggleMobile }: TopbarProps) {
         </div>
 
         <div className="flex items-center gap-3">
-          <button className="relative p-2 text-[#94A3B8] hover:text-white hover:bg-slate-800 rounded-full transition-colors">
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#38BDF8] rounded-full border-2 border-[#1E293B]" />
-          </button>
+          <NotificationDropdown />
           
           <div className="flex items-center gap-3 pl-3 border-l border-[rgba(148,163,184,0.12)]">
             <div className="relative shrink-0">

@@ -1,6 +1,6 @@
 import React from 'react';
 import { api } from '@/services/api';
-import type { Allocation } from '@/types';
+import type { Allocation, Warehouse } from '@/types';
 import { AllocationSankey } from '@/components/intelligence/AllocationSankey';
 import { BadgeCheck, Clock, Truck, CheckCircle2, AlertCircle } from 'lucide-react';
 import { cn } from '@/utils';
@@ -12,13 +12,23 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 
 export default function Allocations() {
   const [allocations, setAllocations] = React.useState<Allocation[]>([]);
+  const [warehouses, setWarehouses] = React.useState<Warehouse[]>([]);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
     async function load() {
-      const data = await api.getAllocations();
-      setAllocations(data);
-      setLoading(false);
+      try {
+        const [allocData, whData] = await Promise.all([
+          api.getAllocations(),
+          api.getWarehouses()
+        ]);
+        setAllocations(allocData);
+        setWarehouses(whData);
+      } catch (err) {
+        console.error('Failed to load allocations or warehouses', err);
+      } finally {
+        setLoading(false);
+      }
     }
     load();
   }, []);
@@ -57,7 +67,7 @@ export default function Allocations() {
         <StatCard title="Completed" value={stats.completed} icon={CheckCircle2} variant="default" />
       </div>
 
-      <AllocationSankey allocations={allocations} />
+      <AllocationSankey allocations={allocations} warehouses={warehouses} />
 
       {/* Human-in-the-loop visual */}
       <div className="bg-[#1E293B] border border-[rgba(148,163,184,0.12)] rounded-xl p-6">

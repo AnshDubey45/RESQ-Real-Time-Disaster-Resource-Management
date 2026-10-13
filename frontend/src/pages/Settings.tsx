@@ -1,15 +1,35 @@
 import React from 'react';
 import { User, Bell, Monitor, Activity } from 'lucide-react';
 
+import { toast } from 'sonner';
+
 export default function Settings() {
-  const [preferences, setPreferences] = React.useState<Record<string, boolean>>({
-    'Critical AI Reallocations': true,
-    'New Field Reports': true,
-    'System Health Alerts': true
+  const [preferences, setPreferences] = React.useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('resq_notification_prefs');
+      return saved ? JSON.parse(saved) : {
+        'Critical AI Reallocations': true,
+        'New Field Reports': true,
+        'System Health Alerts': true
+      };
+    } catch {
+      return {
+        'Critical AI Reallocations': true,
+        'New Field Reports': true,
+        'System Health Alerts': true
+      };
+    }
   });
 
   const togglePreference = (pref: string) => {
-    setPreferences(prev => ({ ...prev, [pref]: !prev[pref] }));
+    setPreferences(prev => {
+      const next = { ...prev, [pref]: !prev[pref] };
+      try {
+        localStorage.setItem('resq_notification_prefs', JSON.stringify(next));
+      } catch {}
+      toast.success(`${pref} ${next[pref] ? 'enabled' : 'disabled'}`);
+      return next;
+    });
   };
 
   return (
